@@ -86,34 +86,50 @@ class SourceVersion(ConceptContainerVersionModel):
             source_versions_pos = source_versions_pos + 1
             if len(source_version.concepts) != 0 or len(source_version.mappings) != 0:
                 migrated_anything = True
+            else:
+                continue
 
             from concepts.models import ConceptVersion
-            i = 0
             concept_versions_count = ConceptVersion.objects.filter(id__in = source_version.concepts).count()
             concept_versions = ConceptVersion.objects.filter(id__in = source_version.concepts).iterator()
+
+            i = 0
+            source_version_concepts = list()
             for concept_version in concept_versions:
                 i = i + 1
-                print 'Migrating concept %s (%s of %s) from source %s %s (%s of %s)' % (concept_version.id, i, concept_versions_count, source_version.name, source_version.mnemonic, source_versions_pos, source_versions_count)
-                source_version.add_concept_version(concept_version)
+                source_version_concepts.append(SourceVersionConcept(source_version=source_version, concept_version=concept_version))
+                if i % 512 == 0:
+                    SourceVersionConcept.objects.bulk_create(source_version_concepts)
+                    source_version_concepts = list()
+                    print 'Migrated %s of %s concepts from source %s %s (%s of %s)' % (
+                        i, concept_versions_count, source_version.name, source_version.mnemonic,
+                        source_versions_pos, source_versions_count)
 
             source_version.concepts = []
             source_version.save()
 
             from mappings.models import MappingVersion
-            i = 0
             mapping_versions_count = MappingVersion.objects.filter(id__in=source_version.mappings).count()
             mapping_versions = MappingVersion.objects.filter(id__in=source_version.mappings).iterator()
+
+            i = 0
+            source_version_mappings = list()
             for mapping_version in mapping_versions:
                 i = i + 1
-                print 'Migrating mapping %s (%s of %s) from source %s %s (%s of %s)' % (mapping_version.id, i, mapping_versions_count, source_version.name, source_version.mnemonic, source_versions_pos, source_versions_count)
-                source_version.add_mapping_version(mapping_version)
-
+                source_version_mappings.append(SourceVersionMapping(source_version=source_version, mapping_version=mapping_version))
+                if i % 512 == 0:
+                    SourceVersionMapping.objects.bulk_create(source_version_mappings)
+                    source_version_mappings = list()
+                    print 'Migrated %s of %s mappings from source %s %s (%s of %s)' % (
+                        i, mapping_versions_count, source_version.name, source_version.mnemonic,
+                        source_versions_pos, source_versions_count)
 
             source_version.mappings = []
             source_version.save()
 
         if migrated_anything:
-            haystack.management.commands.rebuild_index.Command().handle(verbosity=2, workers=8, batchsize=128)
+            from haystack.management.commands import rebuild_index
+            rebuild_index.Command().handle(verbosity=2, workers=8, batchsize=128, interactive=False)
 
         haystack.signal_processor = haystack.signals.RealtimeSignalProcessor
 
