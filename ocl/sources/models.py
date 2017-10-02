@@ -76,19 +76,24 @@ class SourceVersion(ConceptContainerVersionModel):
     @classmethod
     def migrate_concepts_and_mappings_field(cls):
         import haystack
-        from datetime import datetime
         haystack.signal_processor = haystack.signals.BaseSignalProcessor
-        import_start_time = datetime.now()
 
-        source_versions = SourceVersion.objects.all();
+        source_versions = SourceVersion.objects.all()
+        source_versions_count = SourceVersion.objects.count()
+        source_versions_pos = 0
+        migrated_anything = False
         for source_version in source_versions:
+            source_versions_pos = source_versions_pos + 1
+            if len(source_version.concepts) != 0 or len(source_version.mappings) != 0:
+                migrated_anything = True
+
             from concepts.models import ConceptVersion
             i = 0
             concept_versions_count = ConceptVersion.objects.filter(id__in = source_version.concepts).count()
             concept_versions = ConceptVersion.objects.filter(id__in = source_version.concepts).iterator()
             for concept_version in concept_versions:
                 i = i + 1
-                print 'Migrating concept %s (%s of %s)' % (concept_version.id, i, concept_versions_count)
+                print 'Migrating concept %s (%s of %s) from source %s %s (%s of %s)' % (concept_version.id, i, concept_versions_count, source_version.name, source_version.mnemonic, source_versions_pos, source_versions_count)
                 source_version.add_concept_version(concept_version)
 
             source_version.concepts = []
@@ -100,16 +105,15 @@ class SourceVersion(ConceptContainerVersionModel):
             mapping_versions = MappingVersion.objects.filter(id__in=source_version.mappings).iterator()
             for mapping_version in mapping_versions:
                 i = i + 1
-                print 'Migrating mapping %s (%s of %s)' % (mapping_version.id, i, mapping_versions_count)
+                print 'Migrating mapping %s (%s of %s) from source %s %s (%s of %s)' % (mapping_version.id, i, mapping_versions_count, source_version.name, source_version.mnemonic, source_versions_pos, source_versions_count)
                 source_version.add_mapping_version(mapping_version)
 
 
             source_version.mappings = []
             source_version.save()
 
-        from haystack.management.commands import update_index
-        update_index.Command().handle(start_date=import_start_time.strftime("%Y-%m-%dT%H:%M:%S"), verbosity=1,
-                                      workers=8, batchsize=128)
+        if migrated_anything:
+            haystack.management.commands.rebuild_index.Command().handle(verbosity=2, workers=8, batchsize=128)
 
         haystack.signal_processor = haystack.signals.RealtimeSignalProcessor
 
@@ -142,7 +146,6 @@ class SourceVersion(ConceptContainerVersionModel):
     def add_concept_version(self, concept_version):
         if self.has_concept_version(concept_version):
             return
-
         source_version_concept = SourceVersionConcept(source_version=self, concept_version=concept_version)
         source_version_concept.full_clean()
         source_version_concept.save()

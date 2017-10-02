@@ -110,7 +110,7 @@ class ConceptsImporter(object):
 
         if update_index_required:
             self.info('Indexing objects updated since {}'.format(import_start_time.strftime("%Y-%m-%dT%H:%M:%S")))
-            update_index.Command().handle(start_date=import_start_time.strftime("%Y-%m-%dT%H:%M:%S"), verbosity=1, workers=8, batchsize=128)
+            update_index.Command().handle(start_date=import_start_time.strftime("%Y-%m-%dT%H:%M:%S"), verbosity=2, workers=8, batchsize=128)
 
         haystack.signal_processor = haystack.signals.RealtimeSignalProcessor
 
